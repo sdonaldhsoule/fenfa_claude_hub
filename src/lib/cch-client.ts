@@ -4,6 +4,8 @@
 
 const CCH_API_URL = process.env.CCH_API_URL;
 const CCH_ADMIN_TOKEN = process.env.CCH_ADMIN_TOKEN;
+const CCH_AUTH_CACHE_TTL_MS = 5 * 60 * 1000; // 5 分钟缓存，避免每次都登录
+let cachedAuthToken: { token: string; expiresAt: number } | null = null;
 
 // ==================== 类型定义 ====================
 
@@ -67,51 +69,236 @@ function getAdminToken(): string {
 }
 
 /**
- * 统一调用 CCH Server Actions API
- * CCH 使用 POST /api/actions/{module}/{action} 格式
+ * 从响应中提取错误文本
  */
-async function cchAction<T>(
+async function getErrorMessage(response: Response): Promise<string> {
+  try {
+    const errorBody = (await response.json()) as Record<string, unknown>;
+    const messageCandidates = [
+      errorBody.error,
+      errorBody.message,
+      errorBody.errorCode,
+    ];
+    const message = messageCandidates.find(
+      (item): item is string => typeof item === "string" && item.trim().length > 0
+    );
+    if (message) return message;
+  } catch {
+    // ignore
+  }
+
+  try {
+    const text = await response.text();
+    if (text.trim().length > 0) {
+      return text.slice(0, 200);
+    }
+  } catch {
+    // ignore
+  }
+
+  return response.statusText || "未知错误";
+}
+
+/**
+ * 从 Set-Cookie 中提取 auth-token
+ */
+function extractAuthToken(setCookieHeader: string | null): string | null {
+  if (!setCookieHeader) return null;
+  const match = setCookieHeader.match(/auth-token=([^;]+)/i);
+  if (!match) return null;
+
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+}
+
+/**
+ * 通过 /api/auth/login 交换 auth-token（新版本 CCH 认证方式）
+ */
+async function getAuthToken(forceRefresh = false): Promise<string> {
+  if (
+    !forceRefresh &&
+    cachedAuthToken &&
+    cachedAuthToken.expiresAt > Date.now()
+  ) {
+    return cachedAuthToken.token;
+  }
+
+  const baseUrl = getBaseUrl();
+  const adminToken = getAdminToken();
+  const response = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ key: adminToken }),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const message = await getErrorMessage(response);
+    throw new Error(
+      `CCH 登录失败 [${response.status}]: ${message}（请检查 CCH_ADMIN_TOKEN 是否为可登录后台的有效令牌）`
+    );
+  }
+
+  const tokenFromCookie = extractAuthToken(response.headers.get("set-cookie"));
+  if (tokenFromCookie) {
+    cachedAuthToken = {
+      token: tokenFromCookie,
+      expiresAt: Date.now() + CCH_AUTH_CACHE_TTL_MS,
+    };
+    return tokenFromCookie;
+  }
+
+  let tokenFromBody: string | null = null;
+  try {
+    const body = (await response.json()) as Record<string, unknown>;
+    if (typeof body.token === "string" && body.token.trim().length > 0) {
+      tokenFromBody = body.token;
+    }
+  } catch {
+    // ignore
+  }
+
+  if (!tokenFromBody) {
+    throw new Error("CCH 登录成功，但未返回 auth-token");
+  }
+
+  cachedAuthToken = {
+    token: tokenFromBody,
+    expiresAt: Date.now() + CCH_AUTH_CACHE_TTL_MS,
+  };
+  return tokenFromBody;
+}
+
+/**
+ * 解析 Server Actions 响应
+ */
+function parseActionResult<T>(
+  result: unknown,
+  module: string,
+  action: string
+): T {
+  if (result && typeof result === "object") {
+    const record = result as Record<string, unknown>;
+    if (record.ok === false) {
+      const message =
+        (typeof record.error === "string" && record.error) ||
+        (typeof record.message === "string" && record.message) ||
+        "未知错误";
+      throw new Error(`CCH 业务错误 ${module}/${action}: ${message}`);
+    }
+    if ("data" in record) {
+      return record.data as T;
+    }
+  }
+
+  // 兼容直接返回数组/对象的实现
+  return result as T;
+}
+
+/**
+ * 使用 Cookie 会话调用 CCH（优先）
+ */
+async function cchActionWithCookie<T>(
   module: string,
   action: string,
-  body: Record<string, unknown> = {}
+  body: Record<string, unknown>,
+  allowRefresh = true
 ): Promise<T> {
   const baseUrl = getBaseUrl();
-  const token = getAdminToken();
+  const adminToken = getAdminToken();
+  const authToken = await getAuthToken();
   const url = `${baseUrl}/api/actions/${module}/${action}`;
 
   const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+      // 兼容部分实现：部分版本只认 Cookie，部分版本可接受 Authorization
+      Cookie: `auth-token=${encodeURIComponent(authToken)}`,
+      Authorization: `Bearer ${adminToken}`,
     },
     body: JSON.stringify(body),
+    cache: "no-store",
   });
 
+  if (response.status === 401 && allowRefresh) {
+    await getAuthToken(true);
+    return cchActionWithCookie<T>(module, action, body, false);
+  }
+
   if (!response.ok) {
-    let errorMessage: string;
-    try {
-      const errorBody = await response.json();
-      errorMessage =
-        errorBody.error || errorBody.message || response.statusText;
-    } catch {
-      errorMessage = response.statusText;
-    }
+    const errorMessage = await getErrorMessage(response);
     throw new Error(
       `CCH API 错误 [${response.status}] ${module}/${action}: ${errorMessage}`
     );
   }
 
   const result = await response.json();
+  return parseActionResult<T>(result, module, action);
+}
 
-  // CCH 返回 { ok: true, data: ... } 格式
-  if (result.ok === false) {
+/**
+ * 使用 Bearer 直连调用 CCH（旧版本回退）
+ */
+async function cchActionWithBearer<T>(
+  module: string,
+  action: string,
+  body: Record<string, unknown>
+): Promise<T> {
+  const baseUrl = getBaseUrl();
+  const adminToken = getAdminToken();
+  const url = `${baseUrl}/api/actions/${module}/${action}`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${adminToken}`,
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const errorMessage = await getErrorMessage(response);
     throw new Error(
-      `CCH 业务错误 ${module}/${action}: ${result.error || "未知错误"}`
+      `CCH API 错误 [${response.status}] ${module}/${action}: ${errorMessage}`
     );
   }
 
-  return result.data as T;
+  const result = await response.json();
+  return parseActionResult<T>(result, module, action);
+}
+
+/**
+ * 统一调用 CCH Server Actions API
+ * 优先 Cookie 会话认证，失败后回退 Bearer 直连
+ */
+async function cchAction<T>(
+  module: string,
+  action: string,
+  body: Record<string, unknown> = {}
+): Promise<T> {
+  try {
+    return await cchActionWithCookie<T>(module, action, body);
+  } catch (cookieError) {
+    try {
+      return await cchActionWithBearer<T>(module, action, body);
+    } catch (bearerError) {
+      const cookieMessage =
+        cookieError instanceof Error ? cookieError.message : String(cookieError);
+      const bearerMessage =
+        bearerError instanceof Error ? bearerError.message : String(bearerError);
+      throw new Error(
+        `CCH 调用失败 ${module}/${action}。Cookie 会话认证失败：${cookieMessage}；Bearer 回退失败：${bearerMessage}`
+      );
+    }
+  }
 }
 
 // ==================== API 方法 ====================
