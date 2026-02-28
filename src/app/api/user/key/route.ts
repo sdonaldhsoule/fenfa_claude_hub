@@ -78,6 +78,7 @@ export async function GET() {
         }
       : null,
     usage: policyState.usage,
+    cchBaseUrl: process.env.CCH_API_URL || "",
     policy: {
       inactivityHours: policyState.policyConfig.inactivityHours,
       dailyReactivateAt: policyState.policyConfig.dailyReactivateAtLabel,

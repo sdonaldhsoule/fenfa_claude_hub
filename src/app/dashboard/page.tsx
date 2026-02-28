@@ -26,6 +26,7 @@ interface KeyData {
   nextDailyReactivateAt: string | null;
   inactivityHours: number;
   dailyReactivateAtLabel: string;
+  cchBaseUrl: string;
 }
 
 interface UserKeyResponse {
@@ -42,6 +43,7 @@ interface UserKeyResponse {
     limit: number;
     remaining: number;
   } | null;
+  cchBaseUrl?: string;
   policy: {
     inactivityHours: number;
     dailyReactivateAt: string;
@@ -141,6 +143,7 @@ export default function DashboardPage() {
               inactivityHours: data.policy?.inactivityHours ?? 5,
               dailyReactivateAtLabel:
                 data.policy?.dailyReactivateAt ?? "每天北京时间 08:00",
+              cchBaseUrl: data.cchBaseUrl || "",
             });
           } else {
             setKeyData(null);
@@ -299,7 +302,7 @@ export default function DashboardPage() {
                 <p className="text-sm text-gray-500 mb-2">
                   1. 设置 OpenAI 兼容端点
                 </p>
-                <CodeBlock code="export OPENAI_BASE_URL=https://lucky-claude-hub.zeabur.app" />
+                <CodeBlock code={`export OPENAI_BASE_URL=${keyData?.cchBaseUrl || "https://your-cch-instance.example.com"}`} />
               </div>
               <div>
                 <p className="text-sm text-gray-500 mb-2">

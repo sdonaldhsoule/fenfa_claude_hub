@@ -29,7 +29,16 @@ export async function POST(
 
   const { id } = await params;
 
-  const body = await request.json();
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: "请求体格式无效" },
+      { status: 400 }
+    );
+  }
+
   const parsed = banSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(

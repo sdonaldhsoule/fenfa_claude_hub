@@ -27,14 +27,13 @@ function getJwtSecret(): Uint8Array {
   return new TextEncoder().encode(jwtSecret);
 }
 
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "";
-
 function getEncryptionKey(): Buffer {
-  if (!ENCRYPTION_KEY) {
+  const encryptionKey = process.env.ENCRYPTION_KEY;
+  if (!encryptionKey) {
     throw new Error("ENCRYPTION_KEY 环境变量未设置");
   }
   // 确保密钥为 32 字节 (256 bit)
-  return crypto.createHash("sha256").update(ENCRYPTION_KEY).digest();
+  return crypto.createHash("sha256").update(encryptionKey).digest();
 }
 
 // ==================== JWT 方法 ====================

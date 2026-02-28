@@ -69,34 +69,33 @@ function getAdminToken(): string {
 }
 
 /**
- * 从响应中提取错误文本
+ * 从响应中提取错误文本（先读 text 再尝试 JSON.parse，避免 body 双重消费）
  */
 async function getErrorMessage(response: Response): Promise<string> {
   try {
-    const errorBody = (await response.json()) as Record<string, unknown>;
-    const messageCandidates = [
-      errorBody.error,
-      errorBody.message,
-      errorBody.errorCode,
-    ];
-    const message = messageCandidates.find(
-      (item): item is string => typeof item === "string" && item.trim().length > 0
-    );
-    if (message) return message;
-  } catch {
-    // ignore
-  }
-
-  try {
     const text = await response.text();
-    if (text.trim().length > 0) {
-      return text.slice(0, 200);
-    }
-  } catch {
-    // ignore
-  }
+    if (!text.trim()) return response.statusText || "未知错误";
 
-  return response.statusText || "未知错误";
+    try {
+      const errorBody = JSON.parse(text) as Record<string, unknown>;
+      const messageCandidates = [
+        errorBody.error,
+        errorBody.message,
+        errorBody.errorCode,
+      ];
+      const message = messageCandidates.find(
+        (item): item is string =>
+          typeof item === "string" && item.trim().length > 0
+      );
+      if (message) return message;
+    } catch {
+      // 非 JSON，使用原始文本
+    }
+
+    return text.slice(0, 200);
+  } catch {
+    return response.statusText || "未知错误";
+  }
 }
 
 /**
@@ -365,7 +364,8 @@ export async function getKeyQuotaUsage(
       limit: (data.limit as number) ?? 0,
       remaining: (data.remaining as number) ?? 0,
     };
-  } catch {
+  } catch (error) {
+    console.error(`[CCH] getKeyQuotaUsage failed for keyId=${keyId}:`, error);
     return { keyId, used: 0, limit: 0, remaining: 0 };
   }
 }
@@ -382,46 +382,31 @@ export async function getUserKeys(userId: number): Promise<CCHKey[]> {
  * 获取当前活跃会话列表
  */
 export async function getActiveSessions(): Promise<CCHSession[]> {
-  try {
-    const data = await cchAction<CCHSession[]>(
-      "statistics",
-      "getActiveSessions",
-      {}
-    );
-    return data;
-  } catch {
-    return [];
-  }
+  const data = await cchAction<CCHSession[]>(
+    "statistics",
+    "getActiveSessions",
+    {}
+  );
+  return data;
 }
 
 /**
  * 获取系统概览统计数据
  */
 export async function getOverviewStats(): Promise<CCHOverviewStats> {
-  try {
-    const data = await cchAction<Record<string, unknown>>(
-      "statistics",
-      "getOverview",
-      {}
-    );
-    return {
-      totalUsers: (data.totalUsers as number) ?? 0,
-      activeUsers: (data.activeUsers as number) ?? 0,
-      totalKeys: (data.totalKeys as number) ?? 0,
-      activeKeys: (data.activeKeys as number) ?? 0,
-      activeSessions: (data.activeSessions as number) ?? 0,
-      totalRequests: (data.totalRequests as number) ?? 0,
-    };
-  } catch {
-    return {
-      totalUsers: 0,
-      activeUsers: 0,
-      totalKeys: 0,
-      activeKeys: 0,
-      activeSessions: 0,
-      totalRequests: 0,
-    };
-  }
+  const data = await cchAction<Record<string, unknown>>(
+    "statistics",
+    "getOverview",
+    {}
+  );
+  return {
+    totalUsers: (data.totalUsers as number) ?? 0,
+    activeUsers: (data.activeUsers as number) ?? 0,
+    totalKeys: (data.totalKeys as number) ?? 0,
+    activeKeys: (data.activeKeys as number) ?? 0,
+    activeSessions: (data.activeSessions as number) ?? 0,
+    totalRequests: (data.totalRequests as number) ?? 0,
+  };
 }
 
 /**

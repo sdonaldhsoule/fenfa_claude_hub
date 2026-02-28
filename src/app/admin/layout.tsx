@@ -9,7 +9,6 @@ import {
   Settings,
   ArrowLeft,
 } from "lucide-react";
-import { Toaster } from "sonner";
 
 const navItems = [
   { href: "/admin", label: "概览", icon: LayoutDashboard },
@@ -80,8 +79,6 @@ export default function AdminLayout({
       <main className="flex-1 overflow-y-auto bg-[#FAFAF5] p-8">
         {children}
       </main>
-
-      <Toaster richColors position="top-right" />
     </div>
   );
 }

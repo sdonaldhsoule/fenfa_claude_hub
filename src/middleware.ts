@@ -7,6 +7,7 @@ const PUBLIC_PATHS = [
   "/",
   "/api/auth/login",
   "/api/auth/callback",
+  "/api/health",
 ];
 
 const PUBLIC_PREFIXES = [
