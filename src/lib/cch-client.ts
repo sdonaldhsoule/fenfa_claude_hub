@@ -119,7 +119,7 @@ async function cchFetch<T>(
 export async function addUser(
   username: string
 ): Promise<CCHAddUserResponse> {
-  return cchFetch<CCHAddUserResponse>("/api/admin/users", {
+  return cchFetch<CCHAddUserResponse>("/v1/admin/users", {
     method: "POST",
     body: JSON.stringify({ username }),
   });
@@ -132,7 +132,7 @@ export async function toggleUserEnabled(
   userId: number,
   enabled: boolean
 ): Promise<void> {
-  await cchFetch(`/api/admin/users/${userId}/toggle`, {
+  await cchFetch(`/v1/admin/users/${userId}/toggle`, {
     method: "PATCH",
     body: JSON.stringify({ enabled }),
   });
@@ -145,7 +145,7 @@ export async function toggleKeyEnabled(
   keyId: number,
   enabled: boolean
 ): Promise<void> {
-  await cchFetch(`/api/admin/keys/${keyId}/toggle`, {
+  await cchFetch(`/v1/admin/keys/${keyId}/toggle`, {
     method: "PATCH",
     body: JSON.stringify({ enabled }),
   });
@@ -157,35 +157,35 @@ export async function toggleKeyEnabled(
 export async function getKeyQuotaUsage(
   keyId: number
 ): Promise<CCHQuotaUsage> {
-  return cchFetch<CCHQuotaUsage>(`/api/admin/keys/${keyId}/usage`);
+  return cchFetch<CCHQuotaUsage>(`/v1/admin/keys/${keyId}/usage`);
 }
 
 /**
  * 获取指定用户的所有密钥
  */
 export async function getUserKeys(userId: number): Promise<CCHKey[]> {
-  return cchFetch<CCHKey[]>(`/api/admin/users/${userId}/keys`);
+  return cchFetch<CCHKey[]>(`/v1/admin/users/${userId}/keys`);
 }
 
 /**
  * 获取当前活跃会话列表
  */
 export async function getActiveSessions(): Promise<CCHSession[]> {
-  return cchFetch<CCHSession[]>("/api/admin/sessions");
+  return cchFetch<CCHSession[]>("/v1/admin/sessions");
 }
 
 /**
  * 获取系统概览统计数据
  */
 export async function getOverviewStats(): Promise<CCHOverviewStats> {
-  return cchFetch<CCHOverviewStats>("/api/admin/stats");
+  return cchFetch<CCHOverviewStats>("/v1/admin/stats");
 }
 
 /**
  * 获取所有用户列表
  */
 export async function getAllUsers(): Promise<CCHUser[]> {
-  return cchFetch<CCHUser[]>("/api/admin/users");
+  return cchFetch<CCHUser[]>("/v1/admin/users");
 }
 
 // 命名空间导出，方便 import { cchClient } from "@/lib/cch-client" 使用
