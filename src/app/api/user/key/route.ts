@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { clearSessionCookie, decrypt, getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { cchClient } from "@/lib/cch-client";
+import { evaluateUserKeyPolicy } from "@/lib/key-policy";
 
 // 获取当前用户的 API Key 信息
 export async function GET() {
@@ -12,6 +12,20 @@ export async function GET() {
 
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
+    select: {
+      id: true,
+      cchApiKey: true,
+      cchKeyId: true,
+      cchUserId: true,
+      isBanned: true,
+      banReason: true,
+      createdAt: true,
+      lastLoginAt: true,
+      lastActivityAt: true,
+      lastKnownUsage: true,
+      keyAutoDisabled: true,
+      autoDisabledAt: true,
+    },
   });
 
   if (!user) {
@@ -30,6 +44,18 @@ export async function GET() {
     );
   }
 
+  const policyState = await evaluateUserKeyPolicy({
+    id: user.id,
+    cchKeyId: user.cchKeyId,
+    isBanned: user.isBanned,
+    createdAt: user.createdAt,
+    lastLoginAt: user.lastLoginAt,
+    lastActivityAt: user.lastActivityAt,
+    lastKnownUsage: user.lastKnownUsage,
+    keyAutoDisabled: user.keyAutoDisabled,
+    autoDisabledAt: user.autoDisabledAt,
+  });
+
   let apiKey: string | null = null;
   if (user.cchApiKey) {
     try {
@@ -39,24 +65,27 @@ export async function GET() {
     }
   }
 
-  // 获取使用统计
-  let usage = null;
-  if (user.cchKeyId) {
-    try {
-      usage = await cchClient.getKeyQuotaUsage(user.cchKeyId);
-    } catch {
-      // 如果获取使用统计失败，不影响返回 Key
-    }
-  }
-
   return NextResponse.json({
     apiKey: apiKey
       ? {
           key: apiKey,
           keyId: user.cchKeyId,
           userId: user.cchUserId,
+          status: policyState.keyStatus,
+          autoDisabledAt: policyState.autoDisabledAt
+            ? policyState.autoDisabledAt.toISOString()
+            : null,
         }
       : null,
-    usage,
+    usage: policyState.usage,
+    policy: {
+      inactivityHours: policyState.policyConfig.inactivityHours,
+      dailyReactivateAt: policyState.policyConfig.dailyReactivateAtLabel,
+      dailyReactivateHourBjt: policyState.policyConfig.dailyReactivateHourBjt,
+      dailyReactivateMinuteBjt:
+        policyState.policyConfig.dailyReactivateMinuteBjt,
+      nextDailyReactivateAt: policyState.nextDailyReactivateAt.toISOString(),
+      lastActivityAt: policyState.lastActivityAt.toISOString(),
+    },
   });
 }

@@ -9,6 +9,7 @@ const errorMessages: Record<string, string> = {
   account_restricted: "您的 LinuxDO 账号受限",
   banned: "您已被封禁",
   cch_creation_failed: "API Key 创建失败，请稍后重试",
+  cch_reactivate_failed: "密钥重新激活失败，请稍后重试",
   auth_failed: "登录失败，请重试",
 };
 
@@ -45,7 +46,7 @@ export default async function LoginPage({
             CCH Distributor
           </h1>
           <p className="text-sm text-gray-500 text-center mb-8">
-            Claude Code Hub API Key 分发站
+            Codex CLI GPT 模型 API Key 分发站
           </p>
 
           {/* Error Alert */}
@@ -84,14 +85,27 @@ export default async function LoginPage({
                 <span className="flex-shrink-0 w-5 h-5 rounded-full bg-gradient-to-br from-[#D2691E] to-[#E8913A] text-white text-xs flex items-center justify-center font-medium">
                   3
                 </span>
-                <span>将 API Key 配置到 Claude Code CLI</span>
+                <span>将 API Key 配置到 Codex CLI</span>
               </li>
               <li className="flex gap-2">
                 <span className="flex-shrink-0 w-5 h-5 rounded-full bg-gradient-to-br from-[#D2691E] to-[#E8913A] text-white text-xs flex items-center justify-center font-medium">
                   4
                 </span>
-                <span>开始使用 Claude Code 服务</span>
+                <span>使用 GPT 模型开始开发</span>
               </li>
+            </ol>
+          </div>
+
+          {/* Key Policy */}
+          <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+            <h3 className="mb-2 text-sm font-medium text-amber-900">
+              Key 使用限制
+            </h3>
+            <ol className="space-y-1 text-xs text-amber-800">
+              <li>1. 连续无登录且无 API 调用达到策略阈值，密钥会自动停用</li>
+              <li>2. 每天固定时刻统一重新激活所有密钥</li>
+              <li>3. 若被停用，重新访问登录页面并登录即可恢复</li>
+              <li>4. 以上阈值由管理员在后台“策略配置”页面管理</li>
             </ol>
           </div>
 

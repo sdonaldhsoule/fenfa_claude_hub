@@ -18,10 +18,14 @@ import { toast } from "sonner";
 
 interface KeyData {
   key: string;
-  status: "active" | "disabled";
+  status: "active" | "auto_disabled";
   totalCalls: number;
   remainingQuota: number;
-  lastUsedAt: string | null;
+  autoDisabledAt: string | null;
+  lastActivityAt: string | null;
+  nextDailyReactivateAt: string | null;
+  inactivityHours: number;
+  dailyReactivateAtLabel: string;
 }
 
 interface UserKeyResponse {
@@ -29,6 +33,8 @@ interface UserKeyResponse {
     key: string;
     keyId: number | null;
     userId: number | null;
+    status: "active" | "auto_disabled";
+    autoDisabledAt: string | null;
   } | null;
   usage: {
     keyId: number;
@@ -36,6 +42,14 @@ interface UserKeyResponse {
     limit: number;
     remaining: number;
   } | null;
+  policy: {
+    inactivityHours: number;
+    dailyReactivateAt: string;
+    dailyReactivateHourBjt: number;
+    dailyReactivateMinuteBjt: number;
+    nextDailyReactivateAt: string;
+    lastActivityAt: string;
+  };
 }
 
 function maskKey(key: string): string {
@@ -118,10 +132,15 @@ export default function DashboardPage() {
           if (data.apiKey?.key) {
             setKeyData({
               key: data.apiKey.key,
-              status: "active",
+              status: data.apiKey.status,
               totalCalls: data.usage?.used ?? 0,
               remainingQuota: data.usage?.remaining ?? 0,
-              lastUsedAt: null,
+              autoDisabledAt: data.apiKey.autoDisabledAt ?? null,
+              lastActivityAt: data.policy?.lastActivityAt ?? null,
+              nextDailyReactivateAt: data.policy?.nextDailyReactivateAt ?? null,
+              inactivityHours: data.policy?.inactivityHours ?? 5,
+              dailyReactivateAtLabel:
+                data.policy?.dailyReactivateAt ?? "每天北京时间 08:00",
             });
           } else {
             setKeyData(null);
@@ -169,14 +188,16 @@ export default function DashboardPage() {
             </div>
             {keyData && (
               <Badge
-                variant={keyData.status === "active" ? "secondary" : "destructive"}
+                variant={
+                  keyData.status === "active" ? "secondary" : "destructive"
+                }
                 className={
                   keyData.status === "active"
                     ? "bg-green-50 text-green-700 border-green-200"
                     : ""
                 }
               >
-                {keyData.status === "active" ? "活跃" : "已禁用"}
+                {keyData.status === "active" ? "活跃" : "自动停用"}
               </Badge>
             )}
           </div>
@@ -203,6 +224,22 @@ export default function DashboardPage() {
             </div>
           ) : (
             <p className="text-sm text-gray-500">暂无 API Key 数据</p>
+          )}
+
+          {keyData?.status === "auto_disabled" && (
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <p>
+                密钥因连续 {keyData.inactivityHours} 小时无登录且无 API 调用而自动停用。
+              </p>
+              <p className="mt-1">
+                重新访问登录页并登录可立即恢复；
+                {keyData.nextDailyReactivateAt
+                  ? `系统也会在${keyData.dailyReactivateAtLabel}（下一次约 ${formatDate(
+                      keyData.nextDailyReactivateAt
+                    )}）统一恢复。`
+                  : `系统也会在${keyData.dailyReactivateAtLabel}统一恢复。`}
+              </p>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -235,9 +272,9 @@ export default function DashboardPage() {
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-500">上次使用时间</span>
+                <span className="text-sm text-gray-500">上次活跃时间</span>
                 <span className="text-sm font-medium text-gray-900">
-                  {keyData ? formatDate(keyData.lastUsedAt) : "-"}
+                  {keyData ? formatDate(keyData.lastActivityAt) : "-"}
                 </span>
               </div>
             </div>
@@ -260,17 +297,23 @@ export default function DashboardPage() {
             <div className="space-y-4">
               <div>
                 <p className="text-sm text-gray-500 mb-2">
-                  1. 设置 API 端点
+                  1. 设置 OpenAI 兼容端点
                 </p>
-                <CodeBlock code="export ANTHROPIC_BASE_URL=https://lucky-claude-hub.zeabur.app" />
+                <CodeBlock code="export OPENAI_BASE_URL=https://lucky-claude-hub.zeabur.app" />
               </div>
               <div>
                 <p className="text-sm text-gray-500 mb-2">
                   2. 设置 API Key
                 </p>
                 <CodeBlock
-                  code={`export ANTHROPIC_API_KEY=${keyData ? keyData.key : "your-api-key"}`}
+                  code={`export OPENAI_API_KEY=${keyData ? keyData.key : "your-api-key"}`}
                 />
+              </div>
+              <div>
+                <p className="text-sm text-gray-500 mb-2">
+                  3. 在 Codex CLI 选择 GPT 模型
+                </p>
+                <CodeBlock code="codex --model gpt-5" />
               </div>
             </div>
           </CardContent>

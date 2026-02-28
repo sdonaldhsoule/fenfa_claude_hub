@@ -25,7 +25,21 @@ model User {
   cchUserId      Int?
   cchApiKey      String? // AES-256-GCM 加密存储
   cchKeyId       Int?
+  lastActivityAt DateTime?
+  lastKnownUsage Int      @default(0)
+  keyAutoDisabled Boolean @default(false)
+  autoDisabledAt DateTime?
   lastLoginAt    DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+model SystemState {
+  id                     Int      @id
+  inactivityHours        Int      @default(5)
+  dailyReactivateHourBjt Int      @default(8)
+  dailyReactivateMinuteBjt Int    @default(0)
+  lastDailyReactivateAt  DateTime?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 }

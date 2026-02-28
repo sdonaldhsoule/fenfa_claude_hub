@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Users,
   Monitor,
+  Settings,
   ArrowLeft,
 } from "lucide-react";
 import { Toaster } from "sonner";
@@ -14,6 +15,7 @@ const navItems = [
   { href: "/admin", label: "概览", icon: LayoutDashboard },
   { href: "/admin/users", label: "用户管理", icon: Users },
   { href: "/admin/sessions", label: "会话监控", icon: Monitor },
+  { href: "/admin/settings", label: "策略配置", icon: Settings },
 ];
 
 export default function AdminLayout({

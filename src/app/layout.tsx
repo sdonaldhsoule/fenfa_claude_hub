@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "CCH Distributor",
-  description: "Claude Code Hub API Key 分发站",
+  description: "Codex CLI GPT 模型 API Key 分发站",
 };
 
 export default function RootLayout({

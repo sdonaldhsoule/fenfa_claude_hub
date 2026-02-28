@@ -4,6 +4,10 @@ import { exchangeCode, getUserInfo } from "@/lib/oauth";
 import { signJWT, encrypt } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { cchClient } from "@/lib/cch-client";
+import {
+  ensureDailyKeyReactivation,
+  reactivateUserKeyOnLogin,
+} from "@/lib/key-policy";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -26,6 +30,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    await ensureDailyKeyReactivation();
+
     // 用 code 换 access_token
     const tokenData = await exchangeCode(code);
     const accessToken = tokenData.access_token;
@@ -53,6 +59,7 @@ export async function GET(request: NextRequest) {
       initialAdminId && String(linuxdoUser.id) === String(initialAdminId);
 
     // 查找或创建用户
+    const now = new Date();
     let user = await prisma.user.findUnique({
       where: { linuxdoId: linuxdoUser.id },
     });
@@ -68,6 +75,23 @@ export async function GET(request: NextRequest) {
         );
       }
 
+      let latestUsage = user.lastKnownUsage ?? 0;
+      try {
+        latestUsage = await reactivateUserKeyOnLogin(
+          {
+            id: user.id,
+            cchKeyId: user.cchKeyId,
+            keyAutoDisabled: user.keyAutoDisabled,
+            lastKnownUsage: user.lastKnownUsage ?? 0,
+          }
+        );
+      } catch (reactivateError) {
+        console.error("Reactivate key on login failed:", reactivateError);
+        return NextResponse.redirect(
+          new URL("/?error=cch_reactivate_failed", siteUrl)
+        );
+      }
+
       user = await prisma.user.update({
         where: { linuxdoId: linuxdoUser.id },
         data: {
@@ -75,7 +99,11 @@ export async function GET(request: NextRequest) {
           name: linuxdoUser.name,
           avatarTemplate: linuxdoUser.avatar_template,
           trustLevel: linuxdoUser.trust_level,
-          lastLoginAt: new Date(),
+          lastLoginAt: now,
+          lastActivityAt: now,
+          lastKnownUsage: latestUsage,
+          keyAutoDisabled: false,
+          autoDisabledAt: null,
           ...(isInitialAdmin ? { role: "ADMIN" } : {}),
         },
       });
@@ -95,7 +123,11 @@ export async function GET(request: NextRequest) {
             cchUserId: cchResult.user.id,
             cchApiKey: encrypt(cchResult.key.key),
             cchKeyId: cchResult.key.id,
-            lastLoginAt: new Date(),
+            lastLoginAt: now,
+            lastActivityAt: now,
+            lastKnownUsage: 0,
+            keyAutoDisabled: false,
+            autoDisabledAt: null,
           },
         });
       } catch (cchError) {
