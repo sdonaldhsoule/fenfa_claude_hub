@@ -1,65 +1,106 @@
-import Image from "next/image";
+import { Terminal } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
-export default function Home() {
+const errorMessages: Record<string, string> = {
+  missing_params: "缺少必要参数",
+  invalid_state: "安全验证失败，请重试",
+  trust_level_too_low: "LinuxDO 信任等级不足，需要等级 1 及以上",
+  account_restricted: "您的 LinuxDO 账号受限",
+  banned: "您已被封禁",
+  cch_creation_failed: "API Key 创建失败，请稍后重试",
+  auth_failed: "登录失败，请重试",
+};
+
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; reason?: string }>;
+}) {
+  const params = await searchParams;
+  const error = params.error;
+  const reason = params.reason;
+
+  let errorMessage = "";
+  if (error) {
+    errorMessage = errorMessages[error] || "发生未知错误，请重试";
+    if (error === "banned" && reason) {
+      errorMessage = `${errorMessage}：${reason}`;
+    }
+  }
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <div className="min-h-screen bg-[#FAFAF5] flex items-center justify-center p-4">
+      <Card className="w-full max-w-md rounded-2xl shadow-sm border bg-white">
+        <CardContent className="pt-8 pb-8 px-8">
+          {/* Logo */}
+          <div className="flex justify-center mb-6">
+            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#D2691E] to-[#E8913A] flex items-center justify-center shadow-md">
+              <Terminal className="w-7 h-7 text-white" />
+            </div>
+          </div>
+
+          {/* Title */}
+          <h1 className="text-2xl font-bold text-center text-gray-900 mb-1">
+            CCH Distributor
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="text-sm text-gray-500 text-center mb-8">
+            Claude Code Hub API Key 分发站
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
+
+          {/* Error Alert */}
+          {errorMessage && (
+            <div className="mb-6 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+              {errorMessage}
+            </div>
+          )}
+
+          {/* Login Button */}
+          <a href="/api/auth/login" className="block mb-8">
+            <Button className="w-full h-11 bg-gradient-to-r from-[#D2691E] to-[#E8913A] hover:from-[#C05E1A] hover:to-[#D68032] text-white font-medium rounded-lg text-sm cursor-pointer transition-all">
+              LinuxDO 账号登录
+            </Button>
           </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+
+          {/* Instructions */}
+          <div className="space-y-1 mb-6">
+            <h3 className="text-sm font-medium text-gray-700 mb-3">
+              使用说明
+            </h3>
+            <ol className="space-y-2 text-sm text-gray-600">
+              <li className="flex gap-2">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-gradient-to-br from-[#D2691E] to-[#E8913A] text-white text-xs flex items-center justify-center font-medium">
+                  1
+                </span>
+                <span>使用 LinuxDO 账号登录（需信任等级 &gt;= 1）</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-gradient-to-br from-[#D2691E] to-[#E8913A] text-white text-xs flex items-center justify-center font-medium">
+                  2
+                </span>
+                <span>登录后自动获取 API Key</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-gradient-to-br from-[#D2691E] to-[#E8913A] text-white text-xs flex items-center justify-center font-medium">
+                  3
+                </span>
+                <span>将 API Key 配置到 Claude Code CLI</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-gradient-to-br from-[#D2691E] to-[#E8913A] text-white text-xs flex items-center justify-center font-medium">
+                  4
+                </span>
+                <span>开始使用 Claude Code 服务</span>
+              </li>
+            </ol>
+          </div>
+
+          {/* Footer Note */}
+          <p className="text-xs text-gray-400 text-center">
+            需要 LinuxDO 信任等级 1 及以上
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }

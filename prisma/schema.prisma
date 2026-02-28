@@ -1,0 +1,31 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id             String   @id @default(cuid())
+  linuxdoId      Int      @unique
+  username       String
+  name           String?
+  avatarTemplate String?
+  trustLevel     Int      @default(0)
+  role           Role     @default(USER)
+  isBanned       Boolean  @default(false)
+  banReason      String?
+  cchUserId      Int?
+  cchApiKey      String? // AES-256-GCM 加密存储
+  cchKeyId       Int?
+  lastLoginAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
