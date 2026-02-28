@@ -18,13 +18,13 @@ import { toast } from "sonner";
 
 interface KeyData {
   key: string;
-  status: "active" | "auto_disabled";
+  status: "active" | "quota_exhausted";
   totalCalls: number;
-  remainingQuota: number;
+  dailyQuotaLimit: number;
+  todayUsed: number;
+  todayRemaining: number;
   autoDisabledAt: string | null;
-  lastActivityAt: string | null;
   nextDailyReactivateAt: string | null;
-  inactivityHours: number;
   dailyReactivateAtLabel: string;
   cchBaseUrl: string;
 }
@@ -34,7 +34,7 @@ interface UserKeyResponse {
     key: string;
     keyId: number | null;
     userId: number | null;
-    status: "active" | "auto_disabled";
+    status: "active" | "quota_exhausted";
     autoDisabledAt: string | null;
   } | null;
   usage: {
@@ -45,12 +45,13 @@ interface UserKeyResponse {
   } | null;
   cchBaseUrl?: string;
   policy: {
-    inactivityHours: number;
+    dailyQuotaLimit: number;
     dailyReactivateAt: string;
     dailyReactivateHourBjt: number;
     dailyReactivateMinuteBjt: number;
+    todayUsed: number;
+    todayRemaining: number;
     nextDailyReactivateAt: string;
-    lastActivityAt: string;
   };
 }
 
@@ -136,11 +137,11 @@ export default function DashboardPage() {
               key: data.apiKey.key,
               status: data.apiKey.status,
               totalCalls: data.usage?.used ?? 0,
-              remainingQuota: data.usage?.remaining ?? 0,
+              dailyQuotaLimit: data.policy?.dailyQuotaLimit ?? 100,
+              todayUsed: data.policy?.todayUsed ?? 0,
+              todayRemaining: data.policy?.todayRemaining ?? 0,
               autoDisabledAt: data.apiKey.autoDisabledAt ?? null,
-              lastActivityAt: data.policy?.lastActivityAt ?? null,
               nextDailyReactivateAt: data.policy?.nextDailyReactivateAt ?? null,
-              inactivityHours: data.policy?.inactivityHours ?? 5,
               dailyReactivateAtLabel:
                 data.policy?.dailyReactivateAt ?? "每天北京时间 08:00",
               cchBaseUrl: data.cchBaseUrl || "",
@@ -177,7 +178,6 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <h1 className="text-xl font-bold text-gray-900">仪表盘</h1>
 
-      {/* API Key Card */}
       <Card className="rounded-2xl shadow-sm border bg-white">
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
@@ -200,7 +200,7 @@ export default function DashboardPage() {
                     : ""
                 }
               >
-                {keyData.status === "active" ? "活跃" : "自动停用"}
+                {keyData.status === "active" ? "活跃" : "额度耗尽"}
               </Badge>
             )}
           </div>
@@ -229,18 +229,16 @@ export default function DashboardPage() {
             <p className="text-sm text-gray-500">暂无 API Key 数据</p>
           )}
 
-          {keyData?.status === "auto_disabled" && (
+          {keyData?.status === "quota_exhausted" && (
             <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
               <p>
-                密钥因连续 {keyData.inactivityHours} 小时无登录且无 API 调用而自动停用。
+                今日额度已用完（{keyData.todayUsed}/{keyData.dailyQuotaLimit}）。
               </p>
               <p className="mt-1">
-                重新访问登录页并登录可立即恢复；
+                额度会在{keyData.dailyReactivateAtLabel}自动刷新；
                 {keyData.nextDailyReactivateAt
-                  ? `系统也会在${keyData.dailyReactivateAtLabel}（下一次约 ${formatDate(
-                      keyData.nextDailyReactivateAt
-                    )}）统一恢复。`
-                  : `系统也会在${keyData.dailyReactivateAtLabel}统一恢复。`}
+                  ? `下一次刷新约 ${formatDate(keyData.nextDailyReactivateAt)}。`
+                  : ""}
               </p>
             </div>
           )}
@@ -248,7 +246,6 @@ export default function DashboardPage() {
       </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Usage Stats Card */}
         <Card className="rounded-2xl shadow-sm border bg-white">
           <CardHeader className="pb-4">
             <div className="flex items-center gap-2">
@@ -269,22 +266,21 @@ export default function DashboardPage() {
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-500">剩余配额</span>
+                <span className="text-sm text-gray-500">今日已用额度</span>
                 <span className="text-sm font-medium text-gray-900">
-                  {keyData ? keyData.remainingQuota.toLocaleString() : "-"}
+                  {keyData ? keyData.todayUsed.toLocaleString() : "-"}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-500">上次活跃时间</span>
+                <span className="text-sm text-gray-500">今日剩余额度</span>
                 <span className="text-sm font-medium text-gray-900">
-                  {keyData ? formatDate(keyData.lastActivityAt) : "-"}
+                  {keyData ? keyData.todayRemaining.toLocaleString() : "-"}
                 </span>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Quick Start Card */}
         <Card className="rounded-2xl shadow-sm border bg-white">
           <CardHeader className="pb-4">
             <div className="flex items-center gap-2">
@@ -302,7 +298,9 @@ export default function DashboardPage() {
                 <p className="text-sm text-gray-500 mb-2">
                   1. 设置 OpenAI 兼容端点
                 </p>
-                <CodeBlock code={`export OPENAI_BASE_URL=${keyData?.cchBaseUrl || "https://your-cch-instance.example.com"}`} />
+                <CodeBlock
+                  code={`export OPENAI_BASE_URL=${keyData?.cchBaseUrl || "https://your-cch-instance.example.com"}`}
+                />
               </div>
               <div>
                 <p className="text-sm text-gray-500 mb-2">

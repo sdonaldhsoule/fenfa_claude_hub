@@ -23,6 +23,8 @@ export async function GET() {
       lastLoginAt: true,
       lastActivityAt: true,
       lastKnownUsage: true,
+      quotaWindowStartAt: true,
+      quotaWindowBaseUsage: true,
       keyAutoDisabled: true,
       autoDisabledAt: true,
     },
@@ -52,6 +54,8 @@ export async function GET() {
     lastLoginAt: user.lastLoginAt,
     lastActivityAt: user.lastActivityAt,
     lastKnownUsage: user.lastKnownUsage,
+    quotaWindowStartAt: user.quotaWindowStartAt,
+    quotaWindowBaseUsage: user.quotaWindowBaseUsage,
     keyAutoDisabled: user.keyAutoDisabled,
     autoDisabledAt: user.autoDisabledAt,
   });
@@ -80,13 +84,14 @@ export async function GET() {
     usage: policyState.usage,
     cchBaseUrl: process.env.CCH_API_URL || "",
     policy: {
-      inactivityHours: policyState.policyConfig.inactivityHours,
+      dailyQuotaLimit: policyState.policyConfig.dailyQuotaLimit,
       dailyReactivateAt: policyState.policyConfig.dailyReactivateAtLabel,
       dailyReactivateHourBjt: policyState.policyConfig.dailyReactivateHourBjt,
       dailyReactivateMinuteBjt:
         policyState.policyConfig.dailyReactivateMinuteBjt,
+      todayUsed: policyState.todayUsed,
+      todayRemaining: policyState.todayRemaining,
       nextDailyReactivateAt: policyState.nextDailyReactivateAt.toISOString(),
-      lastActivityAt: policyState.lastActivityAt.toISOString(),
     },
   });
 }

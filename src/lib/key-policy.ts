@@ -2,12 +2,13 @@ import { prisma } from "@/lib/prisma";
 import { cchClient, type CCHQuotaUsage } from "@/lib/cch-client";
 
 const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000; // UTC+8
-const DEFAULT_INACTIVITY_HOURS = 5;
+
+const DEFAULT_DAILY_QUOTA_LIMIT = 100;
 const DEFAULT_DAILY_REACTIVATE_HOUR_BJT = 8;
 const DEFAULT_DAILY_REACTIVATE_MINUTE_BJT = 0;
 
-const MIN_INACTIVITY_HOURS = 1;
-const MAX_INACTIVITY_HOURS = 168;
+const MIN_DAILY_QUOTA_LIMIT = 1;
+const MAX_DAILY_QUOTA_LIMIT = 100000;
 
 const SYSTEM_STATE_ID = 1;
 
@@ -19,34 +20,37 @@ export interface PolicyTrackedUser {
   lastActivityAt: Date | null;
   createdAt: Date;
   lastKnownUsage: number;
+  quotaWindowStartAt: Date | null;
+  quotaWindowBaseUsage: number;
   keyAutoDisabled: boolean;
   autoDisabledAt: Date | null;
 }
 
 export interface KeyPolicyConfig {
-  inactivityHours: number;
+  dailyQuotaLimit: number;
   dailyReactivateHourBjt: number;
   dailyReactivateMinuteBjt: number;
   dailyReactivateAtLabel: string;
 }
 
 export interface UpdateKeyPolicyInput {
-  inactivityHours: number;
+  dailyQuotaLimit: number;
   dailyReactivateHourBjt: number;
   dailyReactivateMinuteBjt: number;
 }
 
 export interface UserPolicyState {
   usage: CCHQuotaUsage | null;
-  keyStatus: "active" | "auto_disabled";
+  keyStatus: "active" | "quota_exhausted";
   autoDisabledAt: Date | null;
-  lastActivityAt: Date;
+  todayUsed: number;
+  todayRemaining: number;
   nextDailyReactivateAt: Date;
   policyConfig: KeyPolicyConfig;
 }
 
 interface SystemStateRow {
-  inactivityHours: number;
+  dailyQuotaLimit: number;
   dailyReactivateHourBjt: number;
   dailyReactivateMinuteBjt: number;
   lastDailyReactivateAt: Date | null;
@@ -67,14 +71,14 @@ function formatDailyReactivateAtLabel(hour: number, minute: number): string {
 function normalizePolicyConfig(
   raw: Pick<
     SystemStateRow,
-    "inactivityHours" | "dailyReactivateHourBjt" | "dailyReactivateMinuteBjt"
+    "dailyQuotaLimit" | "dailyReactivateHourBjt" | "dailyReactivateMinuteBjt"
   >
 ): Omit<KeyPolicyConfig, "dailyReactivateAtLabel"> {
   return {
-    inactivityHours: clampInteger(
-      raw.inactivityHours,
-      MIN_INACTIVITY_HOURS,
-      MAX_INACTIVITY_HOURS
+    dailyQuotaLimit: clampInteger(
+      raw.dailyQuotaLimit,
+      MIN_DAILY_QUOTA_LIMIT,
+      MAX_DAILY_QUOTA_LIMIT
     ),
     dailyReactivateHourBjt: clampInteger(raw.dailyReactivateHourBjt, 0, 23),
     dailyReactivateMinuteBjt: clampInteger(raw.dailyReactivateMinuteBjt, 0, 59),
@@ -98,14 +102,14 @@ async function getOrCreateSystemState(): Promise<SystemStateRow> {
     where: { id: SYSTEM_STATE_ID },
     create: {
       id: SYSTEM_STATE_ID,
-      inactivityHours: DEFAULT_INACTIVITY_HOURS,
+      dailyQuotaLimit: DEFAULT_DAILY_QUOTA_LIMIT,
       dailyReactivateHourBjt: DEFAULT_DAILY_REACTIVATE_HOUR_BJT,
       dailyReactivateMinuteBjt: DEFAULT_DAILY_REACTIVATE_MINUTE_BJT,
       lastDailyReactivateAt: null,
     },
     update: {},
     select: {
-      inactivityHours: true,
+      dailyQuotaLimit: true,
       dailyReactivateHourBjt: true,
       dailyReactivateMinuteBjt: true,
       lastDailyReactivateAt: true,
@@ -117,9 +121,8 @@ export async function getKeyPolicyConfig(): Promise<KeyPolicyConfig> {
   const state = await getOrCreateSystemState();
   const normalized = normalizePolicyConfig(state);
 
-  // 自动修正越界配置，避免策略异常
   if (
-    normalized.inactivityHours !== state.inactivityHours ||
+    normalized.dailyQuotaLimit !== state.dailyQuotaLimit ||
     normalized.dailyReactivateHourBjt !== state.dailyReactivateHourBjt ||
     normalized.dailyReactivateMinuteBjt !== state.dailyReactivateMinuteBjt
   ) {
@@ -187,16 +190,12 @@ export function getNextDailyReactivateAt(
   return new Date(latest.getTime() + 24 * 60 * 60 * 1000);
 }
 
-function getLastActivityAt(user: PolicyTrackedUser): Date {
-  return user.lastActivityAt ?? user.lastLoginAt ?? user.createdAt;
-}
-
-export async function ensureDailyKeyReactivation(
+export async function ensureDailyQuotaRefresh(
   now: Date = new Date(),
   policyConfig?: KeyPolicyConfig
 ): Promise<void> {
   const config = policyConfig ?? (await getKeyPolicyConfig());
-  const latestReactivateAt = getLatestDailyReactivateAt(
+  const latestRefreshAt = getLatestDailyReactivateAt(
     now,
     config.dailyReactivateHourBjt,
     config.dailyReactivateMinuteBjt
@@ -205,7 +204,7 @@ export async function ensureDailyKeyReactivation(
   const state = await getOrCreateSystemState();
   if (
     state.lastDailyReactivateAt &&
-    state.lastDailyReactivateAt >= latestReactivateAt
+    state.lastDailyReactivateAt >= latestRefreshAt
   ) {
     return;
   }
@@ -221,39 +220,35 @@ export async function ensureDailyKeyReactivation(
     },
   });
 
-  const successIds: string[] = [];
   await Promise.all(
     users.map(async (user) => {
       if (!user.cchKeyId) return;
+
       try {
+        const usage = await cchClient.getKeyQuotaUsage(user.cchKeyId);
+        const used = Number.isFinite(usage.used) ? usage.used : 0;
+
         await cchClient.toggleKeyEnabled(user.cchKeyId, true);
-        successIds.push(user.id);
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            lastKnownUsage: used,
+            quotaWindowStartAt: latestRefreshAt,
+            quotaWindowBaseUsage: used,
+            keyAutoDisabled: false,
+            autoDisabledAt: null,
+          },
+        });
       } catch (error) {
-        console.error(
-          `Daily key reactivation failed for user ${user.id}:`,
-          error
-        );
+        console.error(`Daily quota refresh failed for user ${user.id}:`, error);
       }
     })
   );
 
-  if (successIds.length > 0) {
-    await prisma.user.updateMany({
-      where: {
-        id: { in: successIds },
-        keyAutoDisabled: true,
-      },
-      data: {
-        keyAutoDisabled: false,
-        autoDisabledAt: null,
-      },
-    });
-  }
-
   await prisma.systemState.update({
     where: { id: SYSTEM_STATE_ID },
     data: {
-      lastDailyReactivateAt: latestReactivateAt,
+      lastDailyReactivateAt: latestRefreshAt,
     },
   });
 }
@@ -263,7 +258,7 @@ export async function evaluateUserKeyPolicy(
   now: Date = new Date()
 ): Promise<UserPolicyState> {
   const policyConfig = await getKeyPolicyConfig();
-  await ensureDailyKeyReactivation(now, policyConfig);
+  await ensureDailyQuotaRefresh(now, policyConfig);
 
   const latestUser = await prisma.user.findUnique({
     where: { id: user.id },
@@ -275,6 +270,8 @@ export async function evaluateUserKeyPolicy(
       lastActivityAt: true,
       createdAt: true,
       lastKnownUsage: true,
+      quotaWindowStartAt: true,
+      quotaWindowBaseUsage: true,
       keyAutoDisabled: true,
       autoDisabledAt: true,
     },
@@ -289,6 +286,8 @@ export async function evaluateUserKeyPolicy(
         lastActivityAt: latestUser.lastActivityAt,
         createdAt: latestUser.createdAt,
         lastKnownUsage: latestUser.lastKnownUsage,
+        quotaWindowStartAt: latestUser.quotaWindowStartAt,
+        quotaWindowBaseUsage: latestUser.quotaWindowBaseUsage,
         keyAutoDisabled: latestUser.keyAutoDisabled,
         autoDisabledAt: latestUser.autoDisabledAt,
       }
@@ -297,37 +296,60 @@ export async function evaluateUserKeyPolicy(
   let usage: CCHQuotaUsage | null = null;
   let keyAutoDisabled = currentUser.keyAutoDisabled;
   let autoDisabledAt = currentUser.autoDisabledAt;
-  let lastActivityAt = getLastActivityAt(currentUser);
-  let lastKnownUsage = currentUser.lastKnownUsage ?? 0;
+
+  let todayUsed = 0;
+  let todayRemaining = policyConfig.dailyQuotaLimit;
 
   if (currentUser.cchKeyId) {
     usage = await cchClient.getKeyQuotaUsage(currentUser.cchKeyId);
     const used = Number.isFinite(usage.used) ? usage.used : 0;
 
-    if (used > lastKnownUsage) {
-      lastKnownUsage = used;
-      lastActivityAt = now;
+    if (used !== currentUser.lastKnownUsage) {
       await prisma.user.update({
         where: { id: currentUser.id },
-        data: {
-          lastKnownUsage,
-          lastActivityAt,
-        },
+        data: { lastKnownUsage: used },
       });
-    } else if (used !== lastKnownUsage) {
-      lastKnownUsage = used;
+    }
+
+    const latestRefreshAt = getLatestDailyReactivateAt(
+      now,
+      policyConfig.dailyReactivateHourBjt,
+      policyConfig.dailyReactivateMinuteBjt
+    );
+
+    let quotaWindowStartAt = currentUser.quotaWindowStartAt ?? latestRefreshAt;
+    let quotaWindowBaseUsage = currentUser.quotaWindowBaseUsage ?? used;
+
+    if (quotaWindowStartAt < latestRefreshAt) {
+      quotaWindowStartAt = latestRefreshAt;
+      quotaWindowBaseUsage = used;
+
+      try {
+        await cchClient.toggleKeyEnabled(currentUser.cchKeyId, true);
+      } catch (error) {
+        console.error(
+          `Re-enable key on stale quota window failed for user ${currentUser.id}:`,
+          error
+        );
+      }
+
+      keyAutoDisabled = false;
+      autoDisabledAt = null;
       await prisma.user.update({
         where: { id: currentUser.id },
         data: {
-          lastKnownUsage,
+          quotaWindowStartAt,
+          quotaWindowBaseUsage,
+          keyAutoDisabled: false,
+          autoDisabledAt: null,
         },
       });
     }
 
-    const inactivityLimitMs = policyConfig.inactivityHours * 60 * 60 * 1000;
-    const inactiveTooLong =
-      now.getTime() - lastActivityAt.getTime() >= inactivityLimitMs;
-    if (!keyAutoDisabled && !currentUser.isBanned && inactiveTooLong) {
+    todayUsed = Math.max(0, used - quotaWindowBaseUsage);
+    todayRemaining = Math.max(0, policyConfig.dailyQuotaLimit - todayUsed);
+
+    if (!keyAutoDisabled && !currentUser.isBanned && todayUsed >= policyConfig.dailyQuotaLimit) {
       try {
         await cchClient.toggleKeyEnabled(currentUser.cchKeyId, false);
         keyAutoDisabled = true;
@@ -341,7 +363,7 @@ export async function evaluateUserKeyPolicy(
         });
       } catch (error) {
         console.error(
-          `Auto disable key failed for user ${currentUser.id}:`,
+          `Disable key on daily quota exceeded failed for user ${currentUser.id}:`,
           error
         );
       }
@@ -350,9 +372,10 @@ export async function evaluateUserKeyPolicy(
 
   return {
     usage,
-    keyStatus: keyAutoDisabled ? "auto_disabled" : "active",
+    keyStatus: keyAutoDisabled ? "quota_exhausted" : "active",
     autoDisabledAt,
-    lastActivityAt,
+    todayUsed,
+    todayRemaining,
     nextDailyReactivateAt: getNextDailyReactivateAt(
       now,
       policyConfig.dailyReactivateHourBjt,
@@ -360,24 +383,4 @@ export async function evaluateUserKeyPolicy(
     ),
     policyConfig,
   };
-}
-
-export async function reactivateUserKeyOnLogin(
-  user: Pick<
-    PolicyTrackedUser,
-    "id" | "cchKeyId" | "keyAutoDisabled" | "lastKnownUsage"
-  >
-): Promise<number> {
-  let usageUsed = user.lastKnownUsage ?? 0;
-
-  if (user.cchKeyId) {
-    if (user.keyAutoDisabled) {
-      await cchClient.toggleKeyEnabled(user.cchKeyId, true);
-    }
-
-    const usage = await cchClient.getKeyQuotaUsage(user.cchKeyId);
-    usageUsed = Number.isFinite(usage.used) ? usage.used : usageUsed;
-  }
-
-  return usageUsed;
 }

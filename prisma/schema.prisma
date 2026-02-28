@@ -27,6 +27,8 @@ model User {
   cchKeyId       Int?
   lastActivityAt DateTime?
   lastKnownUsage Int      @default(0)
+  quotaWindowStartAt DateTime?
+  quotaWindowBaseUsage Int @default(0)
   keyAutoDisabled Boolean @default(false)
   autoDisabledAt DateTime?
   lastLoginAt    DateTime?
@@ -37,6 +39,7 @@ model User {
 model SystemState {
   id                     Int      @id
   inactivityHours        Int      @default(5)
+  dailyQuotaLimit        Int      @default(100)
   dailyReactivateHourBjt Int      @default(8)
   dailyReactivateMinuteBjt Int    @default(0)
   lastDailyReactivateAt  DateTime?

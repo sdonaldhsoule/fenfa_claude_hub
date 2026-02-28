@@ -4,10 +4,7 @@ import { exchangeCode, getUserInfo } from "@/lib/oauth";
 import { signJWT, encrypt } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { cchClient } from "@/lib/cch-client";
-import {
-  ensureDailyKeyReactivation,
-  reactivateUserKeyOnLogin,
-} from "@/lib/key-policy";
+import { ensureDailyQuotaRefresh } from "@/lib/key-policy";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -30,7 +27,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    await ensureDailyKeyReactivation();
+    await ensureDailyQuotaRefresh();
 
     // 用 code 换 access_token
     const tokenData = await exchangeCode(code);
@@ -75,23 +72,6 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      let latestUsage = user.lastKnownUsage ?? 0;
-      try {
-        latestUsage = await reactivateUserKeyOnLogin(
-          {
-            id: user.id,
-            cchKeyId: user.cchKeyId,
-            keyAutoDisabled: user.keyAutoDisabled,
-            lastKnownUsage: user.lastKnownUsage ?? 0,
-          }
-        );
-      } catch (reactivateError) {
-        console.error("Reactivate key on login failed:", reactivateError);
-        return NextResponse.redirect(
-          new URL("/?error=cch_reactivate_failed", siteUrl)
-        );
-      }
-
       user = await prisma.user.update({
         where: { linuxdoId: linuxdoUser.id },
         data: {
@@ -101,9 +81,6 @@ export async function GET(request: NextRequest) {
           trustLevel: linuxdoUser.trust_level,
           lastLoginAt: now,
           lastActivityAt: now,
-          lastKnownUsage: latestUsage,
-          keyAutoDisabled: false,
-          autoDisabledAt: null,
           ...(isInitialAdmin ? { role: "ADMIN" } : {}),
         },
       });
@@ -126,6 +103,8 @@ export async function GET(request: NextRequest) {
             lastLoginAt: now,
             lastActivityAt: now,
             lastKnownUsage: 0,
+            quotaWindowStartAt: now,
+            quotaWindowBaseUsage: 0,
             keyAutoDisabled: false,
             autoDisabledAt: null,
           },

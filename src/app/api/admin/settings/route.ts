@@ -9,7 +9,7 @@ import {
 } from "@/lib/key-policy";
 
 const updatePolicySchema = z.object({
-  inactivityHours: z.number().int().min(1).max(168),
+  dailyQuotaLimit: z.number().int().min(1).max(100000),
   dailyReactivateHourBjt: z.number().int().min(0).max(23),
   dailyReactivateMinuteBjt: z.number().int().min(0).max(59),
 });

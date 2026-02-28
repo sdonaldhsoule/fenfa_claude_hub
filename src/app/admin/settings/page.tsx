@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 
 interface PolicyConfig {
-  inactivityHours: number;
+  dailyQuotaLimit: number;
   dailyReactivateHourBjt: number;
   dailyReactivateMinuteBjt: number;
   dailyReactivateAtLabel: string;
@@ -25,7 +25,7 @@ export default function AdminSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [policy, setPolicy] = useState<PolicyConfig | null>(null);
 
-  const [inactivityHours, setInactivityHours] = useState("5");
+  const [dailyQuotaLimit, setDailyQuotaLimit] = useState("100");
   const [dailyHour, setDailyHour] = useState("8");
   const [dailyMinute, setDailyMinute] = useState("0");
 
@@ -36,7 +36,7 @@ export default function AdminSettingsPage() {
       if (!res.ok) throw new Error("获取策略配置失败");
       const data: PolicyResponse = await res.json();
       setPolicy(data.policy);
-      setInactivityHours(String(data.policy.inactivityHours));
+      setDailyQuotaLimit(String(data.policy.dailyQuotaLimit));
       setDailyHour(String(data.policy.dailyReactivateHourBjt));
       setDailyMinute(String(data.policy.dailyReactivateMinuteBjt));
     } catch (error) {
@@ -51,12 +51,12 @@ export default function AdminSettingsPage() {
   }, []);
 
   const handleSave = async () => {
-    const inactivity = Number(inactivityHours);
+    const quota = Number(dailyQuotaLimit);
     const hour = Number(dailyHour);
     const minute = Number(dailyMinute);
 
-    if (!Number.isInteger(inactivity) || inactivity < 1 || inactivity > 168) {
-      toast.error("停用时长必须是 1 到 168 之间的整数");
+    if (!Number.isInteger(quota) || quota < 1 || quota > 100000) {
+      toast.error("每日额度必须是 1 到 100000 之间的整数");
       return;
     }
     if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
@@ -74,7 +74,7 @@ export default function AdminSettingsPage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          inactivityHours: inactivity,
+          dailyQuotaLimit: quota,
           dailyReactivateHourBjt: hour,
           dailyReactivateMinuteBjt: minute,
         }),
@@ -119,7 +119,7 @@ export default function AdminSettingsPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">策略配置</h1>
         <p className="mt-1 text-sm text-gray-500">
-          配置密钥自动停用与每日统一恢复规则
+          配置每日额度与统一刷新时间
         </p>
       </div>
 
@@ -134,14 +134,14 @@ export default function AdminSettingsPage() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700">
-                无活跃自动停用时长（小时）
+                每账号每日额度
               </label>
               <Input
                 type="number"
                 min={1}
-                max={168}
-                value={inactivityHours}
-                onChange={(e) => setInactivityHours(e.target.value)}
+                max={100000}
+                value={dailyQuotaLimit}
+                onChange={(e) => setDailyQuotaLimit(e.target.value)}
               />
             </div>
 
@@ -174,9 +174,9 @@ export default function AdminSettingsPage() {
 
           <div className="rounded-xl border border-[#E8E8E0] bg-[#FAFAF5] p-4 text-sm text-gray-700">
             <p>
-              当前策略：连续{" "}
-              <span className="font-semibold">{policy?.inactivityHours ?? "-"}</span>{" "}
-              小时无登录且无 API 调用则自动停用密钥；
+              当前策略：每个账号每天{" "}
+              <span className="font-semibold">{policy?.dailyQuotaLimit ?? "-"}</span>{" "}
+              额度；
               <span className="font-semibold">
                 {" "}
                 {policy?.dailyReactivateAtLabel ?? "-"}
