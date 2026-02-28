@@ -1,21 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { cchClient } from "@/lib/cch-client";
 
 // 获取所有用户
 export async function GET(request: NextRequest) {
   const session = await getSession();
-  if (!session || session.role !== "ADMIN") {
+  if (!session) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const authUser = await prisma.user.findUnique({
+    where: { id: session.userId },
+    select: { role: true, isBanned: true },
+  });
+
+  if (!authUser || authUser.isBanned || authUser.role !== "ADMIN") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const searchParams = request.nextUrl.searchParams;
   const search = searchParams.get("search") || "";
-  const role = searchParams.get("role") || "";
-  const status = searchParams.get("status") || "";
-  const page = parseInt(searchParams.get("page") || "1");
-  const pageSize = parseInt(searchParams.get("pageSize") || "20");
+  const role = (searchParams.get("role") || "").toUpperCase();
+  const status = (searchParams.get("status") || "").toLowerCase();
+  const rawPage = parseInt(searchParams.get("page") || "1", 10);
+  const rawPageSize = parseInt(searchParams.get("pageSize") || "20", 10);
+  const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
+  const pageSize =
+    Number.isFinite(rawPageSize) && rawPageSize > 0
+      ? Math.min(100, rawPageSize)
+      : 20;
 
   const where: Record<string, unknown> = {};
 
@@ -32,7 +45,7 @@ export async function GET(request: NextRequest) {
 
   if (status === "banned") {
     where.isBanned = true;
-  } else if (status === "active") {
+  } else if (status === "active" || status === "normal") {
     where.isBanned = false;
   }
 

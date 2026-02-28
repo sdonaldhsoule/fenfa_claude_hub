@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 import crypto from "crypto";
 
 // ==================== 类型定义 ====================
@@ -18,9 +19,13 @@ export interface Session extends JWTPayload {
 
 // ==================== 内部工具 ====================
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "fallback-secret-do-not-use-in-production"
-);
+function getJwtSecret(): Uint8Array {
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) {
+    throw new Error("JWT_SECRET 环境变量未设置");
+  }
+  return new TextEncoder().encode(jwtSecret);
+}
 
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "";
 
@@ -42,7 +47,7 @@ export async function signJWT(payload: JWTPayload): Promise<string> {
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
-    .sign(JWT_SECRET);
+    .sign(getJwtSecret());
 }
 
 /**
@@ -50,7 +55,7 @@ export async function signJWT(payload: JWTPayload): Promise<string> {
  */
 export async function verifyJWT(token: string): Promise<Session> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecret());
     return payload as unknown as Session;
   } catch {
     throw new Error("无效或已过期的 JWT token");
@@ -121,4 +126,18 @@ export async function getSession(): Promise<Session | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * 清除 session cookie
+ */
+export function clearSessionCookie(response: NextResponse): NextResponse {
+  response.cookies.set("session", "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 0,
+    path: "/",
+  });
+  return response;
 }

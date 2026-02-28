@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { clearSessionCookie, getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
@@ -19,6 +19,7 @@ export async function GET() {
       trustLevel: true,
       role: true,
       isBanned: true,
+      banReason: true,
       cchUserId: true,
       cchKeyId: true,
       lastLoginAt: true,
@@ -28,6 +29,18 @@ export async function GET() {
 
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
+  }
+
+  if (user.isBanned) {
+    return clearSessionCookie(
+      NextResponse.json(
+        {
+          error: "Account banned",
+          reason: user.banReason || "您已被封禁",
+        },
+        { status: 403 }
+      )
+    );
   }
 
   return NextResponse.json({ user });

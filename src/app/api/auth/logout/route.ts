@@ -1,17 +1,12 @@
 import { NextResponse } from "next/server";
+import { clearSessionCookie } from "@/lib/auth";
+
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+
+export async function POST() {
+  return clearSessionCookie(NextResponse.json({ success: true }));
+}
 
 export async function GET() {
-  const response = NextResponse.redirect(
-    new URL("/", process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000")
-  );
-
-  response.cookies.set("session", "", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 0,
-    path: "/",
-  });
-
-  return response;
+  return clearSessionCookie(NextResponse.redirect(new URL("/", SITE_URL)));
 }

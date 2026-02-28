@@ -14,7 +14,16 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getSession();
-  if (!session || session.role !== "ADMIN") {
+  if (!session) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const authUser = await prisma.user.findUnique({
+    where: { id: session.userId },
+    select: { role: true, isBanned: true },
+  });
+
+  if (!authUser || authUser.isBanned || authUser.role !== "ADMIN") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -76,7 +85,16 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getSession();
-  if (!session || session.role !== "ADMIN") {
+  if (!session) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const authUser = await prisma.user.findUnique({
+    where: { id: session.userId },
+    select: { role: true, isBanned: true },
+  });
+
+  if (!authUser || authUser.isBanned || authUser.role !== "ADMIN") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

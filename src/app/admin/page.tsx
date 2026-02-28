@@ -9,7 +9,7 @@ import { toast } from "sonner";
 interface StatsData {
   totalUsers: number;
   activeUsers: number;
-  todayCalls: number;
+  totalRequests: number;
   activeSessions: number;
   [key: string]: unknown;
 }
@@ -17,7 +17,7 @@ interface StatsData {
 const statCards = [
   { key: "totalUsers" as const, label: "总用户数", icon: Users, color: "#D2691E" },
   { key: "activeUsers" as const, label: "活跃用户", icon: UserCheck, color: "#E8913A" },
-  { key: "todayCalls" as const, label: "今日调用", icon: Activity, color: "#D2691E" },
+  { key: "totalRequests" as const, label: "总请求", icon: Activity, color: "#D2691E" },
   { key: "activeSessions" as const, label: "当前会话", icon: Monitor, color: "#E8913A" },
 ];
 

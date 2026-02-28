@@ -38,6 +38,7 @@ export interface CCHSession {
   username: string;
   model: string;
   startedAt: string;
+  status?: string;
 }
 
 export interface CCHOverviewStats {

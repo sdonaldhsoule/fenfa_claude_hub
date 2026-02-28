@@ -12,7 +12,7 @@ interface Session {
   username: string;
   model: string;
   startedAt: string;
-  status: string;
+  status?: string;
 }
 
 export default function SessionsPage() {
@@ -26,7 +26,13 @@ export default function SessionsPage() {
       const res = await fetch("/api/admin/sessions");
       if (!res.ok) throw new Error("获取会话数据失败");
       const data = await res.json();
-      setSessions(Array.isArray(data) ? data : data.sessions ?? []);
+      const sessionsData: Session[] = Array.isArray(data) ? data : data.sessions ?? [];
+      setSessions(
+        sessionsData.map((session) => ({
+          ...session,
+          status: session.status ?? "active",
+        }))
+      );
       setLastRefresh(new Date());
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "获取会话数据失败");
@@ -80,7 +86,7 @@ export default function SessionsPage() {
   };
 
   // 状态颜色
-  const getStatusStyle = (status: string) => {
+  const getStatusStyle = (status?: string) => {
     switch (status) {
       case "active":
         return "bg-emerald-50 text-emerald-700 border-emerald-200 border";
@@ -91,7 +97,7 @@ export default function SessionsPage() {
     }
   };
 
-  const getStatusLabel = (status: string) => {
+  const getStatusLabel = (status?: string) => {
     switch (status) {
       case "active":
         return "活跃";

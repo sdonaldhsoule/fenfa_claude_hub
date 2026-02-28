@@ -40,12 +40,12 @@ import { toast } from "sonner";
 interface User {
   id: string;
   username: string;
-  avatarTemplate: string;
+  avatarTemplate: string | null;
   trustLevel: number;
-  role: "admin" | "user";
-  status: "normal" | "banned";
+  role: "ADMIN" | "USER";
+  isBanned: boolean;
   createdAt: string;
-  banReason?: string;
+  banReason?: string | null;
 }
 
 interface UsersResponse {
@@ -62,7 +62,7 @@ export default function UsersPage() {
   const [pageSize] = useState(10);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "user">("all");
+  const [roleFilter, setRoleFilter] = useState<"all" | "ADMIN" | "USER">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "normal" | "banned">(
     "all"
   );
@@ -118,7 +118,7 @@ export default function UsersPage() {
   };
 
   // 获取头像 URL
-  const getAvatarUrl = (avatarTemplate: string) => {
+  const getAvatarUrl = (avatarTemplate: string | null) => {
     if (!avatarTemplate) return "";
     const url = avatarTemplate.replace("{size}", "80");
     if (url.startsWith("http")) return url;
@@ -210,17 +210,17 @@ export default function UsersPage() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" className="bg-white border-[#E8E8E0]">
-              角色：{roleFilter === "all" ? "全部" : roleFilter === "admin" ? "管理员" : "用户"}
+              角色：{roleFilter === "all" ? "全部" : roleFilter === "ADMIN" ? "管理员" : "用户"}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent>
             <DropdownMenuItem onClick={() => { setRoleFilter("all"); setPage(1); }}>
               全部
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => { setRoleFilter("user"); setPage(1); }}>
+            <DropdownMenuItem onClick={() => { setRoleFilter("USER"); setPage(1); }}>
               用户
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => { setRoleFilter("admin"); setPage(1); }}>
+            <DropdownMenuItem onClick={() => { setRoleFilter("ADMIN"); setPage(1); }}>
               管理员
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -314,7 +314,7 @@ export default function UsersPage() {
 
                   {/* 角色 */}
                   <TableCell>
-                    {user.role === "admin" ? (
+                    {user.role === "ADMIN" ? (
                       <Badge className="bg-[#D2691E] text-white hover:bg-[#D2691E]/90 border-none">
                         管理员
                       </Badge>
@@ -327,7 +327,7 @@ export default function UsersPage() {
 
                   {/* 状态 */}
                   <TableCell>
-                    {user.status === "normal" ? (
+                    {!user.isBanned ? (
                       <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 border hover:bg-emerald-50">
                         正常
                       </Badge>
@@ -347,7 +347,7 @@ export default function UsersPage() {
 
                   {/* 操作 */}
                   <TableCell className="text-right pr-4">
-                    {user.status === "normal" ? (
+                    {!user.isBanned ? (
                       <Button
                         variant="outline"
                         size="sm"

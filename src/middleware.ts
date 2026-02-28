@@ -43,9 +43,11 @@ async function verifyToken(
   token: string
 ): Promise<{ userId: string; role: string } | null> {
   try {
-    const secret = new TextEncoder().encode(
-      process.env.JWT_SECRET || "fallback-secret-do-not-use-in-production"
-    );
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      return null;
+    }
+    const secret = new TextEncoder().encode(jwtSecret);
     const { payload } = await jwtVerify(token, secret);
     return {
       userId: payload.userId as string,

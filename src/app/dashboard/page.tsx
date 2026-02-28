@@ -18,10 +18,24 @@ import { toast } from "sonner";
 
 interface KeyData {
   key: string;
-  status: string;
+  status: "active" | "disabled";
   totalCalls: number;
   remainingQuota: number;
   lastUsedAt: string | null;
+}
+
+interface UserKeyResponse {
+  apiKey: {
+    key: string;
+    keyId: number | null;
+    userId: number | null;
+  } | null;
+  usage: {
+    keyId: number;
+    used: number;
+    limit: number;
+    remaining: number;
+  } | null;
 }
 
 function maskKey(key: string): string {
@@ -100,8 +114,20 @@ export default function DashboardPage() {
       try {
         const res = await fetch("/api/user/key");
         if (res.ok) {
-          const data = await res.json();
-          setKeyData(data);
+          const data: UserKeyResponse = await res.json();
+          if (data.apiKey?.key) {
+            setKeyData({
+              key: data.apiKey.key,
+              status: "active",
+              totalCalls: data.usage?.used ?? 0,
+              remainingQuota: data.usage?.remaining ?? 0,
+              lastUsedAt: null,
+            });
+          } else {
+            setKeyData(null);
+          }
+        } else {
+          setKeyData(null);
         }
       } catch {
         toast.error("获取 API Key 信息失败");

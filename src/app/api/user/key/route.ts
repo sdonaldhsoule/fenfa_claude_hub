@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession, decrypt } from "@/lib/auth";
+import { clearSessionCookie, decrypt, getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { cchClient } from "@/lib/cch-client";
 
@@ -16,6 +16,18 @@ export async function GET() {
 
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
+  }
+
+  if (user.isBanned) {
+    return clearSessionCookie(
+      NextResponse.json(
+        {
+          error: "Account banned",
+          reason: user.banReason || "您已被封禁",
+        },
+        { status: 403 }
+      )
+    );
   }
 
   let apiKey: string | null = null;
